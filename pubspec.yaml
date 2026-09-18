@@ -11,8 +11,10 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_image_compress: ^2.5.1
+  http: ^1.6.0
   image_picker: ^1.2.3
   open_filex: ^4.7.0
+  package_info_plus: ^10.2.1
   path_provider: ^2.1.6
   pdf: ^3.11.1
   reorderable_grid_view: ^2.2.8

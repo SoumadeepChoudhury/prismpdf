@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:prismpdf/core/services/github_update_service.dart';
 import 'package:prismpdf/features/document_scan/models/pdf_export_result.dart';
+import 'package:prismpdf/features/document_scan/presentation/widgets/update_dialog.dart';
 import 'package:prismpdf/features/settings/presentation/screens/settings_screen.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import 'package:share_plus/share_plus.dart';
@@ -27,6 +29,35 @@ class _ScanHomeScreenState extends State<ScanHomeScreen> {
 
   final List<ScannedPage> _pages = [];
   bool _isExporting = false;
+
+  final GitHubUpdateService _updateService = GitHubUpdateService(
+    owner: 'SoumadeepChoudhury',
+    repo: 'prismpdf',
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForAppUpdate();
+    });
+  }
+
+  Future<void> _checkForAppUpdate() async {
+    final updateInfo = await _updateService.checkForUpdate();
+    if (updateInfo != null && mounted) {
+      showModalBottomSheet(
+        context: context,
+        isDismissible: false,
+        enableDrag: false,
+        backgroundColor: Colors.transparent,
+        builder: (context) => UpdateModalSheet(
+          updateInfo: updateInfo,
+          updateService: _updateService,
+        ),
+      );
+    }
+  }
 
   Future<void> _captureCamera() async {
     final page = await _captureService.captureFromCamera();
@@ -249,7 +280,7 @@ class _ScanHomeScreenState extends State<ScanHomeScreen> {
 
                             await Share.shareXFiles([
                               XFile(sharePath, mimeType: 'application/pdf'),
-                            ], text: 'Exported from PrismPDF');
+                            ], text: 'Exported from QuickPDF');
                           } catch (e) {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -389,7 +420,7 @@ class _ScanHomeScreenState extends State<ScanHomeScreen> {
       backgroundColor: Colors.transparent, // Keeps the root gradient visible
       extendBodyBehindAppBar: true, // Crucial for immersive gradient look
       appBar: AppBar(
-        title: const Text('PrismPDF'),
+        title: const Text('QuickPDF'),
         actions: [
           if (hasPages)
             TextButton(

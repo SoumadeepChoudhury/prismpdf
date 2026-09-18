@@ -14,16 +14,16 @@ void main() async {
   ]);
 
   // UI overlay settings now handled inside the lightTheme's appBarTheme
-  runApp(const PrismPDFApp());
+  runApp(const QuickPDFApp());
 }
 
-class PrismPDFApp extends StatelessWidget {
-  const PrismPDFApp({super.key});
+class QuickPDFApp extends StatelessWidget {
+  const QuickPDFApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'PrismPDF',
+      title: 'QuickPDF',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme, // CHANGE HERE: Point to the new light theme
       home: const ScanHomeScreen(),

@@ -60,7 +60,7 @@ class PdfService {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final fileName = customFileName != null && customFileName.trim().isNotEmpty
         ? '${customFileName.trim().replaceAll(RegExp(r'[^\w\s\.-]'), '_')}.pdf'
-        : 'PrismPDF_$timestamp.pdf';
+        : 'QuickPDF_$timestamp.pdf';
 
     final customUri = await _storageService.getCustomUri();
 
