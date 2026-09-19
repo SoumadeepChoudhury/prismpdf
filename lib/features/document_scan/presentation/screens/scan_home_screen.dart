@@ -4,6 +4,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:prismpdf/core/services/github_update_service.dart';
 import 'package:prismpdf/features/document_scan/models/pdf_export_result.dart';
+import 'package:prismpdf/features/document_scan/presentation/screens/saved_documents_screen.dart';
 import 'package:prismpdf/features/document_scan/presentation/widgets/update_dialog.dart';
 import 'package:prismpdf/features/settings/presentation/screens/settings_screen.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
@@ -86,18 +87,20 @@ class _ScanHomeScreenState extends State<ScanHomeScreen> {
       isScrollControlled: true,
       builder: (context) => CompressionModalSheet(
         pageCount: _pages.length,
-        onConfirm: (selectedPreset) => _compilePdf(selectedPreset),
+        onConfirm: (selectedPreset, fileName) =>
+            _compilePdf(selectedPreset, fileName),
       ),
     );
   }
 
-  Future<void> _compilePdf(CompressionPreset preset) async {
+  Future<void> _compilePdf(CompressionPreset preset, String fileName) async {
     setState(() => _isExporting = true);
 
     try {
       final result = await _pdfService.generatePdfFromPages(
         pages: _pages,
         preset: preset,
+        customFileName: fileName,
       );
 
       final formattedSize = FileFormatter.formatBytes(result.byteSize);
@@ -435,6 +438,19 @@ class _ScanHomeScreenState extends State<ScanHomeScreen> {
               ),
             ),
           IconButton(
+            icon: const Icon(
+              Icons.folder_copy_outlined,
+              color: AppTheme.textPrimary,
+            ),
+            tooltip: 'Saved Documents',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SavedDocumentsScreen()),
+              );
+            },
+          ),
+          IconButton(
             onPressed: () {
               Navigator.push(
                 context,
@@ -503,7 +519,7 @@ class _ScanHomeScreenState extends State<ScanHomeScreen> {
           ),
           const SizedBox(height: 32),
           const Text(
-            'Ready for Your First Scan',
+            'Ready for Your Scan',
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
@@ -513,7 +529,7 @@ class _ScanHomeScreenState extends State<ScanHomeScreen> {
           ),
           const SizedBox(height: 10),
           const Text(
-            'Tap Camera or Gallery to capture document photos.',
+            'Capture papers or select images to compile a PDF.',
             style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
           ),
         ],

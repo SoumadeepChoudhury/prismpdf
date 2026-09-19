@@ -1,3 +1,5 @@
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:android_intent_plus/flag.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:saf/saf.dart';
@@ -34,6 +36,104 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadInitialData();
+  }
+
+  Future<void> _openFolderInFileManager() async {
+    final customUri = await _storageService.getCustomUri();
+
+    if (customUri == null || customUri.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Default internal storage is sandboxed by Android. Choose a "Custom Folder" to browse it directly in Files.',
+          ),
+          backgroundColor: AppTheme.primarySoft,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+      return;
+    }
+
+    try {
+      // 1. Match ONLY the base folder ID (e.g. 'primary%3APrismPdf' or 'primary:QuickPDF')
+      // and ignore all subsequent /document/ or /tree/ garbage
+      final idMatch = RegExp(
+        r'(?:tree|document)/([^/]+)',
+      ).firstMatch(customUri);
+      final String folderId = idMatch != null
+          ? idMatch.group(1)!
+          : 'primary%3AQuickPDF';
+
+      // 2. Build the pure Android Tree URI and Tree-Document URI
+      final String cleanTreeUri =
+          'content://com.android.externalstorage.documents/tree/$folderId';
+      final String validDocumentUri = '$cleanTreeUri/document/$folderId';
+
+      // 3. Heal SharedPreferences so the corrupted repeated string is wiped permanently
+      final display = await _storageService.getDisplayPath();
+      await _storageService.setCustomDirectory(
+        uri: cleanTreeUri,
+        displayName: display,
+      );
+
+      debugPrint('CLEAN URI LAUNCHED: $validDocumentUri');
+
+      // 4. Fire the intent directly into that folder
+      final intent = AndroidIntent(
+        action: 'android.intent.action.VIEW',
+        data: validDocumentUri,
+        type: 'vnd.android.document/directory',
+        flags: <int>[
+          Flag.FLAG_GRANT_READ_URI_PERMISSION,
+          Flag.FLAG_GRANT_WRITE_URI_PERMISSION,
+          Flag.FLAG_ACTIVITY_NEW_TASK,
+          0x00000080, // FLAG_GRANT_PREFIX_URI_PERMISSION
+        ],
+      );
+
+      await intent.launch();
+    } catch (e) {
+      debugPrint(
+        'Primary intent failed ($e). Attempting fallback tree launch...',
+      );
+
+      // Fallback: If an OEM Files app rejects nested document routing, launch the clean tree root
+      try {
+        final idMatch = RegExp(
+          r'(?:tree|document)/([^/]+)',
+        ).firstMatch(customUri);
+        final String folderId = idMatch != null
+            ? idMatch.group(1)!
+            : 'primary%3AQuickPDF';
+
+        final fallbackIntent = AndroidIntent(
+          action: 'android.intent.action.VIEW',
+          data:
+              'content://com.android.externalstorage.documents/tree/$folderId',
+          flags: <int>[
+            Flag.FLAG_GRANT_READ_URI_PERMISSION,
+            Flag.FLAG_ACTIVITY_NEW_TASK,
+          ],
+        );
+        await fallbackIntent.launch();
+      } catch (fallbackError) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open file manager: $fallbackError'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _loadInitialData() async {
@@ -302,24 +402,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceLight,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppTheme.surfaceBorder),
-            ),
-            child: Text(
-              _displayPath,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textPrimary,
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _openFolderInFileManager,
+              borderRadius: BorderRadius.circular(16),
+              splashColor: AppTheme.primarySoft.withOpacity(0.08),
+              highlightColor: AppTheme.primarySoft.withOpacity(0.04),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceLight,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: AppTheme.surfaceBorder),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _displayPath,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _isCustom
+                                ? 'Tap to open in Files app'
+                                : 'Sandboxed app storage (tap for details)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: _isCustom
+                                  ? AppTheme.primarySoft
+                                  : AppTheme.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryGlow,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        _isCustom
+                            ? Icons.open_in_new_rounded
+                            : Icons.info_outline_rounded,
+                        size: 18,
+                        color: AppTheme.primarySoft,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
           const SizedBox(height: 18),

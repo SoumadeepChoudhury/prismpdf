@@ -9,18 +9,22 @@ import '../../../../core/services/storage_settings_service.dart';
 import '../models/compression_preset.dart';
 import '../models/pdf_export_result.dart';
 import '../models/scanned_page.dart';
+import 'document_history_service.dart';
 import 'image_compression_service.dart';
 
 class PdfService {
   final ImageCompressionService _compressionService;
   final StorageSettingsService _storageService;
+  final DocumentHistoryService _historyService;
   final Saf _saf = Saf();
 
   PdfService({
     ImageCompressionService? compressionService,
     StorageSettingsService? storageService,
+    DocumentHistoryService? historyService,
   }) : _compressionService = compressionService ?? ImageCompressionService(),
-       _storageService = storageService ?? StorageSettingsService();
+       _storageService = storageService ?? StorageSettingsService(),
+       _historyService = historyService ?? DocumentHistoryService();
 
   Future<PdfExportResult> generatePdfFromPages({
     required List<ScannedPage> pages,
@@ -64,7 +68,7 @@ class PdfService {
 
     final customUri = await _storageService.getCustomUri();
 
-    // Case 1: Custom Folder Selected -> Save ONLY to the custom SAF folder
+    // Case 1: Custom Folder Selected
     if (customUri != null && customUri.isNotEmpty) {
       await _saf.writeFileBytes(
         customUri,
@@ -75,6 +79,25 @@ class PdfService {
 
       final displayFolder = await _storageService.getDisplayPath();
 
+      // Build tree-document content URI for individual file
+      final idMatch = RegExp(
+        r'(?:tree|document)/([^/]+)',
+      ).firstMatch(customUri);
+      final treeId = idMatch != null ? idMatch.group(1)! : 'primary%3AQuickPDF';
+      final decodedFolder = Uri.decodeComponent(treeId);
+      final documentFileId = Uri.encodeComponent('$decodedFolder/$fileName');
+      final fileDocumentUri =
+          'content://com.android.externalstorage.documents/tree/$treeId/document/$documentFileId';
+
+      // Register into QuickPDF's document history
+      await _historyService.registerDocument(
+        fileName: fileName,
+        storageType: 'custom',
+        displayLocation: displayFolder,
+        pathOrUri: fileDocumentUri,
+        sizeBytes: pdfBytes.lengthInBytes,
+      );
+
       return PdfExportResult(
         fileName: fileName,
         savedLocationDisplay: '$displayFolder/$fileName',
@@ -84,11 +107,19 @@ class PdfService {
       );
     }
 
-    // Case 2: Default Selected -> Save ONLY to internal app documents
+    // Case 2: Sandboxed App Storage
     final localDir = await getApplicationDocumentsDirectory();
     final localFilePath = p.join(localDir.path, fileName);
     final localPdfFile = File(localFilePath);
     await localPdfFile.writeAsBytes(pdfBytes);
+
+    await _historyService.registerDocument(
+      fileName: fileName,
+      storageType: 'sandbox',
+      displayLocation: 'Internal App Storage',
+      pathOrUri: localFilePath,
+      sizeBytes: pdfBytes.lengthInBytes,
+    );
 
     return PdfExportResult(
       fileName: fileName,
