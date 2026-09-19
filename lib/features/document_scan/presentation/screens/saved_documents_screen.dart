@@ -1,8 +1,8 @@
-import 'dart:io';
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:android_intent_plus/flag.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:prismpdf/core/services/saf_helper_service.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../../core/services/storage_settings_service.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -41,44 +41,46 @@ class _SavedDocumentsScreenState extends State<SavedDocumentsScreen> {
 
   Future<void> _openPdf(SavedPdfItem item) async {
     try {
-      if (!item.isCustom) {
-        final result = await OpenFilex.open(
-          item.pathOrUri,
-          type: 'application/pdf',
-        );
-        if (result.type != ResultType.done && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Could not open file: ${result.message}'),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-        }
-      } else {
-        // Attempt POSIX path resolution first
-        final customUri = await _storageService.getCustomUri();
-        if (customUri != null) {
-          final resolvedFolder = StorageSettingsService.resolveToNativePath(
-            customUri,
-          );
-          final nativeFile = File('$resolvedFolder/${item.name}');
-          if (await nativeFile.exists()) {
-            await OpenFilex.open(nativeFile.path, type: 'application/pdf');
-            return;
-          }
-        }
+      String openPath;
 
-        // Fallback: Launch the content URI directly via Android Intent
-        final intent = AndroidIntent(
-          action: 'android.intent.action.VIEW',
-          data: item.pathOrUri,
-          type: 'application/pdf',
-          flags: <int>[
-            Flag.FLAG_GRANT_READ_URI_PERMISSION,
-            Flag.FLAG_ACTIVITY_NEW_TASK,
-          ],
+      if (!item.isCustom) {
+        openPath = item.pathOrUri;
+      } else {
+        final customUri = await _storageService.getCustomUri();
+        final cachedPath = await SafHelperService.copySafFileToCache(
+          treeUri: customUri,
+          fileName: item.name,
+          documentUri: item.pathOrUri.startsWith('content://')
+              ? item.pathOrUri
+              : null,
         );
-        await intent.launch();
+
+        if (cachedPath != null && cachedPath.isNotEmpty) {
+          openPath = cachedPath;
+        } else {
+          // Fallback: Launch Document URI via Android Intent
+          final intent = AndroidIntent(
+            action: 'android.intent.action.VIEW',
+            data: item.pathOrUri,
+            type: 'application/pdf',
+            flags: <int>[
+              Flag.FLAG_GRANT_READ_URI_PERMISSION,
+              Flag.FLAG_ACTIVITY_NEW_TASK,
+            ],
+          );
+          await intent.launch();
+          return;
+        }
+      }
+
+      final result = await OpenFilex.open(openPath, type: 'application/pdf');
+      if (result.type != ResultType.done && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open file: ${result.message}'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -94,30 +96,32 @@ class _SavedDocumentsScreenState extends State<SavedDocumentsScreen> {
 
   Future<void> _sharePdf(SavedPdfItem item) async {
     try {
-      if (!item.isCustom) {
-        await Share.shareXFiles([
-          XFile(item.pathOrUri, mimeType: 'application/pdf'),
-        ], text: 'QuickPDF: ${item.name}');
-      } else {
-        final customUri = await _storageService.getCustomUri();
-        if (customUri != null) {
-          final resolvedFolder = StorageSettingsService.resolveToNativePath(
-            customUri,
-          );
-          final nativeFile = File('$resolvedFolder/${item.name}');
-          if (await nativeFile.exists()) {
-            await Share.shareXFiles([
-              XFile(nativeFile.path, mimeType: 'application/pdf'),
-            ], text: 'QuickPDF: ${item.name}');
-            return;
-          }
-        }
+      String sharePath;
 
-        // Stream via Content URI
-        await Share.shareXFiles([
-          XFile(item.pathOrUri, mimeType: 'application/pdf'),
-        ], text: 'QuickPDF: ${item.name}');
+      if (!item.isCustom) {
+        sharePath = item.pathOrUri;
+      } else {
+        // Stream out of SAF and into cache to bypass Scoped Storage EACCES
+        final customUri = await _storageService.getCustomUri();
+        final cachedPath = await SafHelperService.copySafFileToCache(
+          treeUri: customUri,
+          fileName: item.name,
+          documentUri: item.pathOrUri.startsWith('content://')
+              ? item.pathOrUri
+              : null,
+        );
+
+        if (cachedPath == null || cachedPath.isEmpty) {
+          throw Exception(
+            'Unable to prepare file from custom folder for sharing.',
+          );
+        }
+        sharePath = cachedPath;
       }
+
+      await Share.shareXFiles([
+        XFile(sharePath, mimeType: 'application/pdf'),
+      ], text: 'QuickPDF: ${item.name}');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
