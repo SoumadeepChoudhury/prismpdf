@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:prismpdf/core/services/crop_service.dart';
 import 'package:prismpdf/core/services/github_update_service.dart';
 import 'package:prismpdf/features/document_scan/models/pdf_export_result.dart';
 import 'package:prismpdf/features/document_scan/presentation/screens/saved_documents_screen.dart';
@@ -42,6 +43,26 @@ class _ScanHomeScreenState extends State<ScanHomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkForAppUpdate();
     });
+  }
+
+  // 1. Instantiate the service inside _ScanHomeScreenState:
+  final CropService _cropService = CropService();
+
+  // 2. Add the method to crop any specific page in the list:
+  Future<void> _cropPage(int index) async {
+    final originalPage = _pages[index];
+    final croppedFile = await _cropService.cropImage(originalPage.file);
+
+    if (croppedFile != null && mounted) {
+      setState(() {
+        _pages[index] = ScannedPage(
+          id: originalPage.id,
+          file: croppedFile,
+          capturedAt: originalPage.capturedAt,
+          rotationAngle: originalPage.rotationAngle,
+        );
+      });
+    }
   }
 
   Future<void> _checkForAppUpdate() async {
@@ -615,6 +636,34 @@ class _ScanHomeScreenState extends State<ScanHomeScreen> {
                 Icons.close_rounded,
                 size: 18,
                 color: AppTheme.textMuted,
+              ),
+            ),
+          ),
+        ),
+        // Crop button
+        Positioned(
+          right: 10,
+          bottom: 10,
+          child: GestureDetector(
+            onTap: () => _cropPage(index),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.backgroundLight.withOpacity(0.92),
+                shape: BoxShape.circle,
+                border: Border.all(color: AppTheme.surfaceBorder),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 6,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.crop_rotate_rounded,
+                size: 18,
+                color: AppTheme.primarySoft,
               ),
             ),
           ),
